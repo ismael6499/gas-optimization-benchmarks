@@ -1,42 +1,48 @@
 # 🛡️ Efficient Error Handling: Gas Benchmarking & Patterns
 
-A comparative research project analyzing the gas impact of different error handling strategies in Solidity, specifically focusing on the transition from string-based requirements to modern Custom Errors.
+![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=flat-square&logo=solidity)
+![Gas](https://img.shields.io/badge/Gas_Optimization-High-green?style=flat-square)
+![License](https://img.shields.io/badge/License-GPL_3.0-blue?style=flat-square)
 
-## 🚀 Engineering Context
+A comparative research implementation analyzing the gas impact of different error handling strategies in Solidity. This project quantifies the trade-offs between legacy string-based validation and modern **Custom Errors**.
 
-As a **Java Software Engineer**, exception handling typically prioritizes detailed observability (e.g., `throw new IllegalArgumentException("Detailed Error Message")`). The cost of storing these error strings is negligible in a server environment.
+In the EVM, every byte of text stored in the contract bytecode increases deployment costs, and emitting those strings at runtime triggers memory expansion. This repository demonstrates how moving to 4-byte error selectors significantly reduces on-chain footprint.
 
-In the **EVM**, however, every byte of text stored in the contract bytecode increases deployment costs, and emitting those strings at runtime consumes additional gas. This project benchmarks standard validation patterns to quantify the trade-offs between Developer Experience (DX) and On-Chain Efficiency.
+## 🏗 Architecture & Design Decisions
 
-## 💡 Project Overview
+### 1. Gas Optimization (Bytecode vs. Selector)
+- **Legacy Pattern (`require` strings):**
+    - *Mechanism:* Stores full ASCII strings in the bytecode. At runtime, it requires memory allocation (`MSTORE`) to encode the error message.
+    - *Cost:* High deployment cost (bytecode size) and higher runtime gas due to dynamic memory expansion.
+- **Modern Pattern (Custom Errors):**
+    - *Mechanism:* Utilizes Solidity 0.8.4+ specific `error Name()`.
+    - *Optimization:* Returns a fixed **4-byte selector** (hash of the error signature). This avoids memory expansion for string encoding and allows dynamic parameters to be passed efficiently via the stack.
 
-The `RequireTest` contract implements and compares three distinct architectural patterns for validating transaction conditions (specifically, Access Control checks).
+### 2. Architectural Trade-offs
+- **Raw Reverts (`if + revert()`):**
+    - Implemented for benchmarking the "absolute floor" of gas usage. While cheapest, it is architecturally discouraged for production systems due to the lack of debugging context (DX).
+- **Semantic Validation:**
+    - The `RequireTest` contract demonstrates that `revert CallerIsNotAdmin(msg.sender)` provides superior observability compared to generic strings, allowing off-chain indexers to decode the exact failure reason and context parameters programmatically.
 
-### 🔍 Key Technical Features:
+## 🛠 Tech Stack
 
-* **Pattern 1: The Readable Approach (`require`):**
-    * *Implementation:* `require(condition, "Error Message")`.
-    * *Analysis:* While readable, the ASCII string "Caller must be admin" is hardcoded into the contract bytecode. This increases the deployment size and triggers memory expansion costs during execution.
+* **Core:** Solidity `^0.8.24`
+* **Features:** Custom Errors (EIP-838), ABI Encoding
+* **Focus:** Gas Profiling & Opcode Analysis
 
-* **Pattern 2: The Modern Approach (`Custom Errors`):**
-    * *Implementation:* `revert TxOriginIsNotAdmin(address)`.
-    * *Analysis:* Utilizing Solidity 0.8.4+ Custom Errors. Instead of a string, this returns a **4-byte selector**. This is the most gas-efficient method, as it allows passing dynamic context (like parameters) without the overhead of ASCII encoding.
+## 📝 Code Comparison
 
-* **Pattern 3: The Raw Approach (`if + revert`):**
-    * *Implementation:* Standard `if` statement followed by `revert()`.
-    * *Analysis:* Useful for absolute minimal gas usage when no context is required, though often discouraged due to poor debugging experience (no return data).
+The benchmark isolates three distinct patterns for the same logical check:
 
-## 🔍 Technical Takeaways
+```solidity
+// 1. Expensive (String stored in bytecode)
+require(msg.sender == admin, "Caller must be admin");
 
-* **Gas Savings:** Replacing `require` strings with **Custom Errors** significantly reduces deployment costs (smaller bytecode) and runtime gas (no memory expansion for string copying).
-* **Standardization:** Adopting Custom Errors aligns with modern Solidity best practices, allowing client-side libraries (like viem or ethers.js) to decode errors programmatically via ABI rather than parsing text strings.
-
-## 🛠️ Stack & Tools
-
-* **Language:** Solidity `^0.8.24`.
-* **Concepts:** Gas Profiling, ABI Encoding, Custom Errors.
-* **License:** GPL-3.0-only.
+// 2. Optimized (4-byte selector)
+if (msg.sender != admin) {
+    revert CallerIsNotAdmin(msg.sender);
+}
+```
 
 ---
-
-*This project highlights the architectural shift required when moving from "Detailed Logging" in Web2 to "Bytecode Efficiency" in Web3.*
+*Reference implementation for EVM gas optimization strategies.*
